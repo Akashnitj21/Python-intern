@@ -1,0 +1,120 @@
+import pandas as pd
+import numpy as np
+
+# Configurable threshold for detecting suspicious activity
+FAILED_LOGIN_THRESHOLD = 10
+
+# Paths to the log file and output CSV
+LOG_FILE = "sample.log"
+OUTPUT_CSV = "log_analysis_results.csv"
+
+def parse_log_file(file_path):
+    """
+    This function will Parse the log file into a DataFrame by splitting strings.
+    """
+    log_data = []  # List to store parsed log entries
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Split the line into parts
+            parts = line.split()
+            
+            # Extract relevant fields based on log format
+            ip = parts[0]  # First part is the IP address
+            method = parts[5][1:]  # HTTP method, e.g., GET or POST
+            endpoint = parts[6]  # Requested endpoint
+            status = parts[8]  # HTTP status code
+            message = "Invalid credentials" if "Invalid credentials" in line else ""  # Check for failure message
+            
+            # Append parsed data
+            log_data.append([ip, method, endpoint, status, message])
+
+    # Convert to DataFrame with appropriate column names
+    return pd.DataFrame(log_data, columns=['IP', 'Method', 'Endpoint', 'Status', 'Message'])
+
+def analyze_requests_per_ip(df):
+    """
+    This function Counts the number of requests made by each IP address.
+    """
+    ip_counts = df['IP'].value_counts().reset_index()  # Count occurrences of each IP
+    ip_counts.columns = ['IP Address', 'Request Count']  # Rename columns
+    return ip_counts
+
+def find_most_accessed_endpoint(df):
+    """
+    we can find the most frequently accessed endpoint in the log.
+    """
+    endpoint_counts = df['Endpoint'].value_counts().reset_index()  # Count occurrences of each endpoint
+    endpoint_counts.columns = ['Endpoint', 'Access Count']  # Rename columns
+    return endpoint_counts.iloc[0]  # Return the most accessed endpoint
+
+def detect_suspicious_activity(df):
+    """
+    This is Identifie IPs with failed login attempts exceeding the threshold.
+    """
+    # Filter rows where the status is 401 and message indicates failed login
+    failed_attempts = df[(df['Status'] == '401') & (df['Message'] == "Invalid credentials")]
+    
+    # Count failed attempts per IP
+    failed_login_counts = failed_attempts['IP'].value_counts()
+    
+    # Filter IPs exceeding the threshold
+    flagged_ips = failed_login_counts[failed_login_counts > FAILED_LOGIN_THRESHOLD].reset_index()
+    flagged_ips.columns = ['IP Address', 'Failed Login Count']  # Rename columns
+    return flagged_ips
+
+def save_results_to_csv(ip_counts, most_accessed_endpoint, suspicious_activity):
+    """
+    Saves analysis results into a single CSV file with labeled sections.
+    """
+    with open(OUTPUT_CSV, 'w') as file:
+        # Write requests per IP section
+        file.write("Requests per IP:\n")
+        ip_counts.to_csv(file, index=False)  # Save IP counts
+        file.write("\n")
+
+        # Write the most accessed endpoint section
+        file.write("Most Accessed Endpoint:\n")
+        most_accessed_endpoint_df = pd.DataFrame([most_accessed_endpoint])  # Convert to DataFrame
+        most_accessed_endpoint_df.to_csv(file, index=False)  # Save most accessed endpoint
+        file.write("\n")
+
+        # Write suspicious activity section
+        file.write("Suspicious Activity Detected:\n")
+        if not suspicious_activity.empty:  # Check if any suspicious activity exists
+            suspicious_activity.to_csv(file, index=False)  # Save suspicious activity data
+        else:
+            file.write("No suspicious activity detected.\n")  # Write message if none found
+
+def main():
+    """
+    Main function to process log data and save the results.
+    """
+    # Parse the log file into a pandas DataFrame
+    log_data = parse_log_file(LOG_FILE)
+
+    # Perform analysis
+    requests_per_ip = analyze_requests_per_ip(log_data)  # Analyze requests per IP
+    most_accessed_endpoint = find_most_accessed_endpoint(log_data)  # Find most accessed endpoint
+    suspicious_activity = detect_suspicious_activity(log_data)  # Detect suspicious activity
+
+    # Print results to the terminal
+    print("Requests per IP:")
+    print(requests_per_ip)
+
+    print("\nMost Frequently Accessed Endpoint:")
+    print(f"{most_accessed_endpoint['Endpoint']} (Accessed {most_accessed_endpoint['Access Count']} times)")
+
+    print("\nSuspicious Activity Detected:")
+    if not suspicious_activity.empty:
+        print(suspicious_activity)
+    else:
+        print("No suspicious activity detected.")
+
+    # Save all results to a single CSV file
+    save_results_to_csv(requests_per_ip, most_accessed_endpoint, suspicious_activity)
+    print(f"\nResults saved to {OUTPUT_CSV}")
+
+# Entry point of the script
+if __name__ == "__main__":
+    main()
